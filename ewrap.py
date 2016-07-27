@@ -1,6 +1,7 @@
 #!/usr/bin/python3.4
 
 import os
+import sys
 import portage
 from portage._sets.base import InternalPackageSet
 from _emerge.create_depgraph_params import create_depgraph_params
@@ -49,8 +50,8 @@ def main():
     worldopts = {"--update": True, "--deep": True, "--newuse": True,
                  "--tree": True, "--ask": True}
 
-    myfiles = ["world"]
-    myopts = worldopts
+    myfiles = sys.argv[1:]
+    myopts = {"--tree": True, "--ask": True}
 
     # myfiles = ["portage"]
     # myopts = {}

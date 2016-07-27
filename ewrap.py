@@ -61,7 +61,7 @@ def main():
     load_emerge_config(emerge_config=emerge_config)
     success, depgraph, favorites = False, None, None
     while not success:
-        print("Building with %s" % myfiles)
+        print("Building %s with %s" % (myfiles, myopts))
         success, depgraph, favorites = build(emerge_config)
         if not success:
             fixed = False

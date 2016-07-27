@@ -68,9 +68,8 @@ def main():
             emerge_config, fixed = fix_conflict(emerge_config, depgraph)
             if not fixed:
                 break
-    print(success)
     if success:
-        mydepgraph.display(depgraph.altlist(), favorites=favorites)
+        depgraph.display(depgraph.altlist(), favorites=favorites)
     depgraph.display_problems()
 
 

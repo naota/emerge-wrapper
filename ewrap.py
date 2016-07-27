@@ -2,6 +2,7 @@
 
 import os
 import sys
+import pygraphviz as pgz
 import portage
 from portage._sets.base import InternalPackageSet
 from _emerge.create_depgraph_params import create_depgraph_params
@@ -43,6 +44,16 @@ def fix_conflict(config, depgraph):
     return (config, False)
 
 
+def draw_graph(digraph):
+    def name(p):
+        return "%r" % p
+    G = pgz.AGraph(directed=True)
+    for x in digraph:
+        for y in digraph.parent_nodes(x):
+            G.add_edge(name(y), name(x))
+    G.layout('dot')
+    G.draw("ewrap.png")
+
 def main():
     myaction = ""
     myopts = {}
@@ -70,6 +81,8 @@ def main():
             if not fixed:
                 break
     if success:
+        dynamic_config = depgraph._dynamic_config
+        draw_graph(dynamic_config.digraph.copy())
         depgraph.display(depgraph.altlist(), favorites=favorites)
     depgraph.display_problems()
 

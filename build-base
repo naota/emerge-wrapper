@@ -14,3 +14,4 @@ fi
 FEATURES='-news' emerge -K @system --root "$root" -j --noreplace || exit 1
 machinectl remove base
 tar -C "${root}" -c . | machinectl import-tar - base
+machinectl read-only base

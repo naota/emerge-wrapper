@@ -2,16 +2,25 @@
 
 root=$1
 test -z "${root}" && exit 1
+BASE=base
 
 mkdir -p "${root}"/etc/portage || exit 1
 rsync -a /etc/portage/. "${root}"/etc/portage/. || exit 1
 emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' > "${root}"/etc/portage/make.conf || exit 1
+sed -i \
+    -e '/^FEATURES=/s/\bccache\b/-ccache/' \
+    -e '/^FEATURES=/s/\bsandbox\b/-sandbox/' \
+    -e '/^FEATURES=/s/\busersandbox\b/-usersandbox/' \
+    -e '/^FEATURES=/s/\bnews\b/-news/' \
+    "${root}"/etc/portage/make.conf || exit 1
+
 pkgs=$(emerge -pqke '@system' | awk '/ebuild/{printf("=%s\n", $4)}')
 if [ -n "${pkgs}" ]; then
-    echo building binary packages
+    echo Building binary packages
     quickpkg ${pkgs} || exit 1
 fi
-FEATURES='-news' emerge -K @system --root "$root" -j --noreplace || exit 1
-machinectl remove base
-tar -C "${root}" -c . | machinectl import-tar - base
-machinectl read-only base
+FEATURES='-news' emerge -qK @system --root "$root" -j --noreplace || exit 1
+machinectl remove ${BASE}
+tar -C "${root}" -c . | machinectl import-tar - ${BASE}
+systemd-nspawn -q -M ${BASE} --bind /usr/portage --bind /var/lib/layman emerge -q --noreplace @system
+machinectl read-only ${BASE}

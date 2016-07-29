@@ -1,0 +1,16 @@
+#!/bin/bash
+
+root=$1
+test -z "${root}" && exit 1
+
+mkdir -p "${root}"/etc/portage || exit 1
+rsync -a /etc/portage/. "${root}"/etc/portage/. || exit 1
+emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' > "${root}"/etc/portage/make.conf || exit 1
+pkgs=$(emerge -pqke '@system' | awk '/ebuild/{printf("=%s\n", $4)}')
+if [ -n "${pkgs}" ]; then
+    echo building binary packages
+    quickpkg ${pkgs} || exit 1
+fi
+FEATURES='-news' emerge -K @system --root "$root" -j --noreplace || exit 1
+machinectl remove base
+tar -C "${root}" -c . | machinectl import-tar - base

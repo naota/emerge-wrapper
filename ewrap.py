@@ -1,6 +1,5 @@
 #!/usr/bin/python3.4
 
-import os
 import sys
 import pygraphviz as pgz
 import portage
@@ -32,7 +31,7 @@ def fix_conflict(config, depgraph):
                     continue
                 for other_pkg in pkgs:
                     atom_without_use_set = \
-                                           InternalPackageSet(initial_atoms=(atom.without_use,))
+                        InternalPackageSet(initial_atoms=(atom.without_use,))
                     if atom_without_use_set.findAtomForPackage(other_pkg,
                                                                modified_use=depgraph._pkg_use_enabled(other_pkg)):
                         continue
@@ -55,29 +54,12 @@ def draw_graph(digraph):
     G.layout('dot')
     G.draw("ewrap.png")
 
-def profile_check(trees, myaction):
-	if myaction in ("help", "info", "search", "sync", "version"):
-		return os.EX_OK
-	for root_trees in trees.values():
-		if root_trees["root_config"].settings.profiles:
-			continue
-		# generate some profile related warning messages
-		validate_ebuild_environment(trees)
-		msg = ("Your current profile is invalid. If you have just changed "
-			"your profile configuration, you should revert back to the "
-			"previous configuration. Allowed actions are limited to "
-			"--help, --info, --search, --sync, and --version.")
-		writemsg_level("".join("!!! %s\n" % l for l in textwrap.wrap(msg, 70)),
-			level=logging.ERROR, noiselevel=-1)
-		return 1
-	return os.EX_OK
 
 def main():
     args = sys.argv[1:]
-    args.extend(["--tree", "--ask"])
+    args.extend(["--tree", "--pretend"])
     myaction, myopts, myfiles = parse_opts(args, silent=True)
 
-    os.umask(0o22)
     emerge_config = load_emerge_config(action=myaction, args=myfiles,
                                        opts=myopts)
     success, depgraph, favorites = False, None, None
@@ -90,11 +72,13 @@ def main():
             if not fixed:
                 break
     if success:
-        # dynamic_config = depgraph._dynamic_config
+        dynamic_config = depgraph._dynamic_config
         # draw_graph(dynamic_config.digraph.copy())
         # depgraph.display(depgraph.altlist(), favorites=favorites)
-        emerge_config = load_emerge_config(emerge_config=emerge_config)
-        run_action(emerge_config)
+        for x in dynamic_config.digraph.leaf_nodes():
+            print("%s %r" % (x, x))
+        # emerge_config = load_emerge_config(emerge_config=emerge_config)
+        # run_action(emerge_config)
     else:
         depgraph.display_problems()
 
@@ -118,7 +102,7 @@ def build(emerge_config):
         # Call destructors for our portdbapi instances.
         for x in emerge_config.trees.values():
             if "porttree" in x.lazy_items:
-                    continue
+                continue
             x["porttree"].dbapi.close_caches()
 
 main()

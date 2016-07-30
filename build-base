@@ -6,7 +6,8 @@ BASE=base
 
 mkdir -p "${root}"/etc/portage || exit 1
 rsync -a /etc/portage/. "${root}"/etc/portage/. || exit 1
-emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' > "${root}"/etc/portage/make.conf || exit 1
+emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' \
+		  > "${root}"/etc/portage/make.conf || exit 1
 sed -i \
     -e '/^FEATURES=/s/\bccache\b/-ccache/' \
     -e '/^FEATURES=/s/\bsandbox\b/-sandbox/' \
@@ -19,8 +20,12 @@ if [ -n "${pkgs}" ]; then
     echo Building binary packages
     quickpkg ${pkgs} || exit 1
 fi
-FEATURES='-news' emerge -qK @system --root "$root" -j --noreplace || exit 1
+FEATURES='-news' \
+	emerge -qK --useoldpkg-atoms @system @system \
+	--root "$root" -j --noreplace || exit 1
 machinectl remove ${BASE}
 tar -C "${root}" -c . | machinectl import-tar - ${BASE}
-systemd-nspawn -q -M ${BASE} --bind /usr/portage --bind /var/lib/layman emerge -q --noreplace @system
+systemd-nspawn -q -M ${BASE} \
+	       --bind /usr/portage --bind /var/lib/layman \
+	       emerge -q --noreplace @system
 machinectl read-only ${BASE}

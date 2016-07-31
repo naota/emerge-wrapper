@@ -195,9 +195,9 @@ class Builder(threading.Thread):
         with open(self.logfile, "w+") as f:
             r = subprocess.call(["./build.sh", atom], stdout=f, stderr=f)
         if r == 0:
-            self.finish(r, "Finished: %s" % name_packages(self.tobuild))
+            self.finish(r, "Finished: %s" % name_packages(list(self.tobuild)))
         else:
-            self.finish(r, "Faild: %s" % name_packages(self.tobuild))
+            self.finish(r, "Faild: %s" % name_packages(list(self.tobuild)))
 
     def update_finished(self):
         with self.manager.finished_lock:

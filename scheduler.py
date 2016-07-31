@@ -21,11 +21,14 @@ def main():
     config = load_emerge_config(action=action, args=files, opts=opts)
     success, depgraph, favorites = False, None, None
     while not success:
-        print("Calculating dependency\nTargets: %s\nOptions: %s" %
-              (files, opts))
+        print(("Targets: %s\nOptions: %s\nCalculating dependency"
+               % (files, opts)), end="")
         success, depgraph, favorites = calcdep(config)
+        print()
         break
     if not success:
+        print("Failed to calculate dependency!")
+        depgraph.display_problems()
         return
     graph = depgraph._dynamic_config.digraph
     built = set()

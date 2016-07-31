@@ -125,6 +125,8 @@ class Manager():
             for p in self.procs:
                 print(("{:<%d}\t{}" % maxlen).format(p.name, p.status))
                 alive |= p.is_alive()
+            if not alive:
+                break
             self.wait_status()
         for p in self.procs:
             p.join()

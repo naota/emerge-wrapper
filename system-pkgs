@@ -1,0 +1,13 @@
+#!/usr/bin/python3
+
+import portage
+from portage._sets import load_default_config
+
+eroot = portage.settings['EROOT']
+trees = portage.db[eroot]
+vartree = trees["vartree"]
+settings = vartree.settings
+setconfig = load_default_config(settings, trees)
+atoms = setconfig.getSetAtoms("system")
+for a in atoms:
+    print(a)

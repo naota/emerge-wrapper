@@ -1,0 +1,28 @@
+#!/bin/bash
+
+root=$1
+test -z "${root}" && exit 1
+BASE=base
+
+echo Creating base root tree
+mkdir -p "${root}"/etc/portage &&
+    tar -C "${root}" -pxf stage3-*.tar.bz2 &&
+    rsync -a --delete /etc/portage/. "${root}"/etc/portage/. &&
+    emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' \
+		      > "${root}"/etc/portage/make.conf &&
+    sed -i \
+	-e '/^FEATURES=/s/\bccache\b/-ccache/' \
+	-e '/^FEATURES=/s/\bsandbox\b/-sandbox/' \
+	-e '/^FEATURES=/s/\busersandbox\b/-usersandbox/' \
+	-e '/^FEATURES=/s/\bnews\b/-news/' \
+	"${root}"/etc/portage/make.conf &&
+    echo "en_US.UTF-8 UTF-8" > "${root}"/etc/locale.gen &&
+    chroot "${root}" /usr/bin/systemd-machine-id-setup &&
+    systemd-nspawn -q -D "${root}" locale-gen &&
+    systemd-nspawn -q -D "${root}" \
+		   --bind /usr/portage --bind /var/lib/layman \
+		   emerge -q --noreplace @system || exit 1
+
+machinectl remove ${BASE}
+tar -C "${root}" -c . | machinectl import-tar - ${BASE}
+machinectl read-only ${BASE}

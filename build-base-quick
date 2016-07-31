@@ -1,0 +1,56 @@
+#!/bin/bash
+
+root=$1
+test -z "${root}" && exit 1
+BASE=base
+
+echo Creating base root tree
+mkdir -p "${root}"/etc/portage || exit 1
+#tar -C "${root}" -pxf stage3-*.tar.bz2 || exit 1
+rsync -a --delete /etc/portage/. "${root}"/etc/portage/. || exit 1
+emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' \
+		  > "${root}"/etc/portage/make.conf || exit 1
+sed -i \
+    -e '/^FEATURES=/s/\bccache\b/-ccache/' \
+    -e '/^FEATURES=/s/\bsandbox\b/-sandbox/' \
+    -e '/^FEATURES=/s/\busersandbox\b/-usersandbox/' \
+    -e '/^FEATURES=/s/\bnews\b/-news/' \
+    "${root}"/etc/portage/make.conf || exit 1
+
+quicktgt=""
+emergetgt=""
+for x in `./system-pkgs`; do
+    for p in `qlist -IvC =$x`;do
+	emergetgt="${emergetgt} =$p"
+	if [ ! -e /usr/portage/packages/${p}.tbz2 ]; then
+	    quicktgt="${quicktgt} =$p"
+	fi
+    done
+done
+if [ -n "${quicktgt}" ]; then
+    echo Building system binary
+    quickpkg ${quicktgt} || exit 1
+fi
+
+echo Listing dependency
+pkgs=$(emerge -pqk --root "${root}" \
+       --binpkg-respect-use=n --binpkg-changed-deps=y \
+       ${emergetgt} | awk '/ebuild/{printf("=%s\n", $4)}')
+if [ -n "${pkgs}" ]; then
+    echo Building dependency binary
+    quickpkg ${pkgs}
+fi
+
+echo emerging packages into the root tree
+FEATURES='-news' emerge -1kavb --root "${root}" \
+	--binpkg-respect-use=n --binpkg-changed-deps=y \
+	${emergetgt}  || exit 1
+echo "en_US.UTF-8 UTF-8" > "${root}"/etc/locale.gen || exit 1
+systemd-nspawn -q -D "${root}" locale-gen || exit 1
+# systemd-nspawn -q -D "${root}" \
+# 	       --bind /usr/portage --bind /var/lib/layman \
+# 	       emerge -q --noreplace @system
+exit
+machinectl remove ${BASE}
+tar -C "${root}" -c . | machinectl import-tar - ${BASE}
+machinectl read-only ${BASE}

@@ -6,7 +6,6 @@ from os import path
 import subprocess
 import sys
 import threading
-from portage._sets.base import InternalPackageSet
 from _emerge.Package import Package
 from _emerge.actions import load_emerge_config
 from _emerge.create_depgraph_params import create_depgraph_params

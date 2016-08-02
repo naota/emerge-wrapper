@@ -82,7 +82,7 @@ def fix_conflict(config, depgraph):
                     newpkg.add(ppkg)
     if newpkg:
         # return [p.cp for p in newpkg]
-        return ["--reinstall-atoms="+" ".join([p.cp for p in newpkg])]
+        return ["--reinstall-atoms=" + " ".join([p.cp for p in newpkg])]
     return []
 
 

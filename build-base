@@ -1,32 +1,168 @@
-#!/bin/bash
+#!/usr/bin/python3
 
-root=$1
-test -z "${root}" && exit 1
-BASE=base
+import os
+from os import path
+import re
+import subprocess
+from subprocess import (CalledProcessError, Popen, PIPE, check_call,
+                        check_output)
+import sys
+import portage
+from portage._sets import load_default_config
 
-mkdir -p "${root}"/etc/portage || exit 1
-rsync -a --delete /etc/portage/. "${root}"/etc/portage/. || exit 1
-rsync -a --delete /etc/pam.d/. "${root}"/etc/pam.d/. || exit 1
-emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' \
-		  > "${root}"/etc/portage/make.conf || exit 1
-sed -i \
-    -e '/^FEATURES=/s/\bccache\b/-ccache/' \
-    -e '/^FEATURES=/s/\bsandbox\b/-sandbox/' \
-    -e '/^FEATURES=/s/\busersandbox\b/-usersandbox/' \
-    -e '/^FEATURES=/s/\bnews\b/-news/' \
-    "${root}"/etc/portage/make.conf || exit 1
+# avoid cyclic dependency
+additional_pkgs = ["virtual/pkgconfig"]
+# heuristics to avoid pulling GUI editors
+excluded_atoms = ["=virtual/editor-0"]
+BASE = "dmerge-base"
+STAGING = "dmerge-staging"
 
-pkgs=$(emerge -pqke '@system' | awk '/ebuild/{printf("=%s\n", $4)}')
-if [ -n "${pkgs}" ]; then
-    echo Building binary packages
-    quickpkg ${pkgs} || exit 1
-fi
-FEATURES='-news' \
-	emerge -qK @system \
-	--root "$root" -j --noreplace || exit 1
-machinectl remove ${BASE}
-tar -C "${root}" -c . | machinectl import-tar - ${BASE}
-systemd-nspawn -q -M ${BASE} \
-	       --bind /usr/portage --bind /var/lib/layman \
-	       emerge -q --noreplace @system
-machinectl read-only ${BASE}
+
+def resolve_atom(atom):
+    if atom[0] in "!":
+        return []
+    atom = re.sub('\[.*?\]', "", atom)          # USE
+    atom = re.sub(':.+$', "", atom)             # SLOT
+    atom = re.sub('^([^<=>~])', r'=\1', atom)   # version range
+    try:
+        result = check_output(["qlist", "-IvC", atom])
+        return ["=" + x for x in result.decode('ascii').splitlines()]
+    except CalledProcessError:
+        # print("can't find %s" % atom)
+        return []
+
+
+def ddepends(cpv):
+    return []  # depends(cpv, "d")
+
+
+def rdepends(cpv):
+    return depends(cpv, "r")
+
+
+def pdepends(cpv):
+    return depends(cpv, "p")
+
+
+def depends(atom, deptype):
+    prog = ["qdepends", "-qC" + deptype, atom]
+    try:
+        deps = check_output(prog).decode("ascii").split()[1:]
+        # print("%s => %s" % (cpv, deps))
+    except CalledProcessError:
+        deps = []
+    res = []
+    for x in deps:
+        res.extend(resolve_atom(x))
+    return res
+
+
+def binary_path(atom):
+    cpv = atom[1:]
+    return "/usr/portage/packages/%s.tbz2" % cpv
+
+
+def system_atoms():
+    eroot = portage.settings['EROOT']
+    trees = portage.db[eroot]
+    vartree = trees["vartree"]
+    settings = vartree.settings
+    setconfig = load_default_config(settings, trees)
+    return setconfig.getSetAtoms("system")
+
+
+def collect_deptree(initial):
+    visit = set()
+    target = set()
+    for a in initial:
+        target |= set(resolve_atom(a))
+    target -= set(excluded_atoms)
+
+    while target:
+        new_cpv = set()
+        for x in target:
+            new_cpv |= set(ddepends(x) + rdepends(x) + pdepends(x))
+        visit |= target
+        new_cpv -= visit
+        target = new_cpv
+    return list(visit)
+
+
+def build_binary_packages():
+    target = collect_deptree(system_atoms() | set(additional_pkgs))
+    pkgs = []
+    for x in target + excluded_atoms:
+        if not os.access(binary_path(x), os.R_OK):
+            pkgs.append(x)
+    # every package should be exist here
+    if pkgs:
+        check_call(["quickpkg"] + pkgs)
+    return target
+
+
+def layout_root(root):
+    etc_dir = path.join(root, "etc")
+    layman_file = path.join(etc_dir, "portage", "repos.conf", "layman.conf")
+    if not path.exists(etc_dir):
+        os.makedirs(etc_dir)
+    subprocess.check_call(["rsync", "-a", "--delete", "/etc/portage", etc_dir])
+    if path.exists(layman_file):
+        os.unlink(layman_file)
+    # need updated to be simple file
+    subprocess.check_call(["rsync", "-a", "--delete", "/etc/pam.d", etc_dir])
+    with open(path.join(etc_dir, "portage", "make.conf"), "w+") as f:
+        out = subprocess.check_output(["emerge", "--info"])
+        lines = out.decode('utf-8').splitlines()
+        lines.reverse()
+        for l in lines[2:]:
+            if not l:
+                break
+            if l.startswith("FEATURES="):
+                for x in ['ccache', 'sandbox', 'usersandbox', 'news']:
+                    l = re.sub(r'\b' + x + r'\b', "-" + x, l)
+            print("%s" % l, file=f)
+
+
+def install_packages(root, atoms):
+    env = os.environ
+    env["CONFIG_PROTECT"] = "-*"
+    env["FEATURES"] = "-news"
+    env["PORTAGE_ELOG_SYSTEM"] = ""
+    subprocess.call(["emerge", "-qKjn1", "--root", root] + atoms, env=env)
+
+
+def setup_root(root):
+    def call_nspawn(rest):
+        check_call(["systemd-nspawn", "-q", "-D", root,
+                    "--bind", "/usr/portage",
+                    "--bind-ro", "/var/lib/layman/"] + rest)
+    with open(path.join(root, "etc", "locale.gen"), "w+") as f:
+        print("en_US.UTF-8 UTF-8", file=f)
+    call_nspawn(["locale-gen"])
+    call_nspawn(["emerge", "-qnkb1", "sys-apps/portage"])
+
+
+def upload_machine(root):
+    tar = Popen(["tar", "-C", root, "-c", "."], stdout=PIPE)
+    subprocess.call(["machinectl", "-q", "remove", STAGING])
+    subprocess.check_call(
+        ["machinectl", "import-tar", "-", STAGING], stdin=tar.stdout)
+    tar.wait()
+    subprocess.check_call(["machinectl", "read-only", STAGING])
+    subprocess.call(["machinectl", "-q", "remove", BASE])
+    subprocess.check_call(["machinectl", "rename", STAGING, BASE])
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Please specify working directory")
+        return
+    pkgs = build_binary_packages()
+    root = sys.argv[1]
+    layout_root(root)
+    install_packages(root, pkgs)
+    setup_root(root)
+    upload_machine(root)
+
+
+main()

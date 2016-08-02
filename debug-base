@@ -1,6 +1,7 @@
 #!/bin/bash
 
 id=build-${RANDOM}
-machinectl clone base "${id}" || exit 1
-systemd-nspawn -q -M "${id}" --bind /usr/portage --bind /var/lib/layman
-machinectl remove "${id}"
+machine="dmerge-${id}"
+machinectl clone dmerge:base "${machine}" || exit 1
+systemd-nspawn -q -M "${machine}" --bind /usr/portage --bind /var/lib/layman
+exec machinectl remove "${machine}"

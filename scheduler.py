@@ -59,6 +59,8 @@ def main():
                 built |= proc.tobuild
                 manager.start(proc)
     manager.loop()
+    print("Executing emerge")
+    subprocess.call(["emerge", "--ask", "--usepkg", "-j2"] + sys.argv[1:])
 
 
 def clear():

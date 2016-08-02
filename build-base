@@ -5,7 +5,8 @@ test -z "${root}" && exit 1
 BASE=base
 
 mkdir -p "${root}"/etc/portage || exit 1
-rsync -a /etc/portage/. "${root}"/etc/portage/. || exit 1
+rsync -a --delete /etc/portage/. "${root}"/etc/portage/. || exit 1
+rsync -a --delete /etc/pam.d/. "${root}"/etc/pam.d/. || exit 1
 emerge --info|sed -e '/ACCEPT_KEYWORDS/,/USE/p;d' \
 		  > "${root}"/etc/portage/make.conf || exit 1
 sed -i \

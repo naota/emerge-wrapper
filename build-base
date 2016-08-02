@@ -22,7 +22,7 @@ if [ -n "${pkgs}" ]; then
     quickpkg ${pkgs} || exit 1
 fi
 FEATURES='-news' \
-	emerge -qK --useoldpkg-atoms @system @system \
+	emerge -qK @system \
 	--root "$root" -j --noreplace || exit 1
 machinectl remove ${BASE}
 tar -C "${root}" -c . | machinectl import-tar - ${BASE}

@@ -17,7 +17,7 @@ from _emerge.stdout_spinner import stdout_spinner
 
 def main():
     args = sys.argv[1:]
-    args.extend(["--tree", "--pretend"])
+    args.extend(["--tree", "--pretend", "--usepkg"])
     success, depgraph, favorites = False, None, None
     while not success:
         action, opts, files = parse_opts(args, silent=True)

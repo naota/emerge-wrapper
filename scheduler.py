@@ -205,9 +205,11 @@ class Builder(threading.Thread):
                 self.waiting = set()
                 return failed
             self.waiting -= self.manager.finished
+        removes = set()
         for p in self.waiting:
             if os.access(binary_path(p), os.R_OK):
-                self.waiting.remove(p)
+                removes.add(p)
+        self.waiting -= removes
         return set()
 
     def finish(self, result, msg):

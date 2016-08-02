@@ -2,5 +2,5 @@
 
 id=build-${RANDOM}
 machinectl clone base "${id}" || exit 1
-systemd-nspawn -q -M "${id}" --bind /usr/portage --bind /var/lib/layman --private-users
+systemd-nspawn -q -M "${id}" --bind /usr/portage --bind /var/lib/layman
 machinectl remove "${id}"

@@ -128,7 +128,7 @@ def install_packages(root, atoms):
     env["CONFIG_PROTECT"] = "-*"
     env["FEATURES"] = "-news"
     env["PORTAGE_ELOG_SYSTEM"] = ""
-    check_call(["emerge", "-qKjn1O", "--root", root] + atoms, env=env)
+    check_call(["emerge", "-qKn1O", "-j3", "--root", root] + atoms, env=env)
 
 
 def setup_root(root):

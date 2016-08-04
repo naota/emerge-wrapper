@@ -159,8 +159,10 @@ def main():
         return
     pkgs = build_binary_packages()
     root = sys.argv[1]
-    layout_root(root)
+    if not path.exists(root):
+        os.mkdir(root)
     install_packages(root, pkgs)
+    layout_root(root)
     setup_root(root)
     upload_machine(root)
 

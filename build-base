@@ -124,8 +124,9 @@ def layout_root(root):
 
 
 def prepare_root(root):
-    if not path.exists(root):
-        os.mkdir(root)
+    usr_dir = path.join(root, "usr")
+    if not path.exists(usr_dir):
+        os.makedirs(usr_dir)
     lib = path.join(root, "lib")
     if path.islink("/lib") and not path.exists(lib):
         os.symlink("lib64", lib)

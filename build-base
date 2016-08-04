@@ -128,11 +128,17 @@ def prepare_root(root):
     if not path.exists(usr_dir):
         os.makedirs(usr_dir)
     lib = path.join(root, "lib")
-    if path.islink("/lib") and not path.exists(lib):
+    if path.islink("/lib") and not path.islink(lib):
         os.symlink("lib64", lib)
-    usr_lib = path.join(root, "usr", "lib")
-    if path.islink("/usr/lib") and not path.exists(usr_lib):
+        lib64 = path.join(root, "lib64")
+        if not path.isdir(lib64):
+            os.mkdir(lib64)
+    usr_lib = path.join(usr_dir, "lib")
+    if path.islink("/usr/lib") and not path.islink(usr_lib):
         os.symlink("lib64", usr_lib)
+        usr_lib64 = path.join(usr_dir, "lib64")
+        if not path.isdir(usr_lib64):
+            os.mkdir(usr_lib64)
 
 
 def install_packages(root, atoms):

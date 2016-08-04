@@ -126,7 +126,7 @@ def layout_root(root):
 def install_packages(root, atoms):
     env = os.environ
     env["CONFIG_PROTECT"] = "-*"
-    env["FEATURES"] = "-news"
+    env["FEATURES"] = "-news -collision-protect"
     env["PORTAGE_ELOG_SYSTEM"] = ""
     check_call(["emerge", "-qKn1O", "-j3", "--root", root] + atoms, env=env)
 

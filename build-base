@@ -11,9 +11,9 @@ import portage
 from portage._sets import load_default_config
 
 # avoid cyclic dependency
-additional_pkgs = ["virtual/pkgconfig"]
+additional_pkgs = ["virtual/pkgconfig", "sys-apps/less"]
 # heuristics to avoid pulling GUI editors
-excluded_atoms = ["=virtual/editor-0"]
+excluded_atoms = ["=virtual/editor-0", "=virtual/pager-0"]
 BASE = "dmerge-base"
 STAGING = "dmerge-staging"
 

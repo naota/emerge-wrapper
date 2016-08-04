@@ -123,6 +123,17 @@ def layout_root(root):
             print("%s" % l, file=f)
 
 
+def prepare_root(root):
+    if not path.exists(root):
+        os.mkdir(root)
+    lib = path.join(root, "lib")
+    if path.islink("/lib") and not path.exists(lib):
+        os.symlink("lib64", lib)
+    usr_lib = path.join(root, "usr", "lib")
+    if path.islink("/usr/lib") and not path.exists(usr_lib):
+        os.symlink("lib64", usr_lib)
+
+
 def install_packages(root, atoms):
     env = os.environ
     env["CONFIG_PROTECT"] = "-*"
@@ -159,8 +170,7 @@ def main():
         return
     pkgs = build_binary_packages()
     root = sys.argv[1]
-    if not path.exists(root):
-        os.mkdir(root)
+    prepare_root(root)
     install_packages(root, pkgs)
     layout_root(root)
     setup_root(root)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/msgpack-rpc/msgpack-rpc-go/rpc"
 	"log"
 	"net"
@@ -11,6 +12,14 @@ type BuildServer map[string]reflect.Value
 
 func (builder BuildServer) Resolve(name string, arguments []reflect.Value) (reflect.Value, error) {
 	return builder[name], nil
+}
+
+func Allocation() (bool, fmt.Stringer) {
+	return true, nil
+}
+
+func Free() fmt.Stringer {
+	return nil
 }
 
 func main() {

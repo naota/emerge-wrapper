@@ -1,6 +1,6 @@
 //go:generate stringer -type=BuilderError
 
-package main
+package buildserver
 
 import (
 	"fmt"
@@ -62,19 +62,4 @@ func Free(id BuilderID) (bool, fmt.Stringer) {
 	}
 	delete(builders, id)
 	return true, nil
-}
-
-func main() {
-	numProcs = 4
-
-	builder := BuildServer{}
-
-	serv := rpc.NewServer(builder, true, nil)
-	l, err := net.Listen("tcp", "127.0.0.1:50000")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	serv.Listen(l)
-	go serv.Run()
 }

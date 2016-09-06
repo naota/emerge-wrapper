@@ -5,15 +5,17 @@ import (
 )
 
 func TestAllocateOne(t *testing.T) {
-	ids, err := Allocate(1)
+	server := NewServer(1)
+
+	ginfo, err := server.AllocateGroup(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 1 {
-		t.Fatalf("length not expected: %v", ids)
+	if ginfo.NumBuilders != 1 {
+		t.Fatalf("#Workers not expected: %v", ginfo.NumBuilders)
 	}
 
-	freed, err := Free(ids[0])
+	freed, err := server.FreeGroup(ginfo.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

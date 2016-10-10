@@ -19,19 +19,19 @@ def calcdep(config):
                                spinner)
 
 def autoresolve(args):
-    success, depgraph, favorites = False, None, None
+    success, depgraph = False, None
     while not success:
         action, opts, files = parse_opts(args, silent=True)
         config = load_emerge_config(action=action, args=files, opts=opts)
         print(("Targets: %s\nOptions: %s\nCalculating dependency  "
                % (files, opts)), end="")
-        success, depgraph, favorites = calcdep(config)
+        success, depgraph, _ = calcdep(config)
         print()
         if success:
             break
         newopts = []
         depgraph.display_problems()
-        newopts += fix_conflict(config, depgraph)
+        newopts += fix_conflict(depgraph)
         added = False
         for opt in newopts:
             if opt not in args:
@@ -43,16 +43,16 @@ def autoresolve(args):
     return True, depgraph
 
 
-def fix_conflict(config, depgraph):
+def fix_conflict(depgraph):
     depgraph._slot_conflict_handler = slot_conflict_handler(depgraph)
     handler = depgraph._slot_conflict_handler
     newpkg = set()
-    for _, slot_atom, pkgs in handler.all_conflicts:
+    for _, _, pkgs in handler.all_conflicts:
         for p in pkgs:
             parents = handler.all_parents.get(p)
             if not parents:
                 continue
-            for ppkg, atom in parents:
+            for ppkg, _ in parents:
                 if not isinstance(ppkg, Package):
                     continue
                 if ppkg.operation != "merge":

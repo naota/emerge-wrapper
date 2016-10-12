@@ -48,8 +48,8 @@ def fix_conflict(depgraph):
     handler = depgraph._slot_conflict_handler
     newpkg = set()
     for _, _, pkgs in handler.all_conflicts:
-        for p in pkgs:
-            parents = handler.all_parents.get(p)
+        for pkg in pkgs:
+            parents = handler.all_parents.get(pkg)
             if not parents:
                 continue
             for ppkg, _ in parents:
@@ -59,5 +59,5 @@ def fix_conflict(depgraph):
                     newpkg.add(ppkg)
     if newpkg:
         # return [p.cp for p in newpkg]
-        return ["--reinstall-atoms=" + " ".join([p.cp for p in newpkg])]
+        return ["--reinstall-atoms=" + " ".join([pkg.cp for pkg in newpkg])]
     return []

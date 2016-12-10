@@ -1,0 +1,86 @@
+#!/usr/bin/python
+
+import readline
+import sys
+import subprocess
+
+from portage.dep import check_required_use, human_readable_required_use
+from _emerge.UseFlagDisplay import pkg_use_display
+from auto_resolver import autoresolve
+
+def main():
+    args = sys.argv[1:]
+    args.extend(["--tree", "--pretend"])
+    while True:
+        success, depgraph, args = autoresolve(args)
+        if success:
+            break
+        print("Failed to calculate dependency!")
+        # handle unsatisfied deps
+        unsatisfied = depgraph._dynamic_config._unsatisfied_deps_for_display
+        if unsatisfied:
+            for pargs, kwargs in unsatisfied:
+                if "show_req_use" in kwargs:
+                    pkg = kwargs["show_req_use"]
+                    output_cpv = pkg.cpv + "::" + pkg.repo
+                    use_display = pkg_use_display(pkg, depgraph._frozen_config.myopts)
+                    reduced_noise = check_required_use(
+                        pkg._metadata["REQUIRED_USE"],
+                        depgraph._pkg_use_enabled(pkg),
+                        pkg.iuse.is_valid_flag,
+                        eapi=pkg.eapi).tounicode()
+                    print("- %s %s\n" % (output_cpv, use_display))
+                    print("  The following REQUIRED_USE flag constraints " + \
+                          "are unsatisfied:")
+                    print("    %s" % human_readable_required_use(reduced_noise))
+                    flaggie(pkg)
+                elif "myparent" in kwargs:
+                    print((pargs, kwargs))
+                else:
+                    print("Unknown unsatisfied dep")
+                    print((pargs, kwargs))
+                    return
+        # handle autounmask
+        if anything_autounmask(depgraph):
+            # let the user update config files
+            depgraph._dynamic_config._displayed_autounmask = False
+            del depgraph._frozen_config.myopts["--pretend"]
+            depgraph._frozen_config.myopts["--ask"] = True
+            depgraph._display_autounmask()
+            subprocess.call(["dispatch-conf"])
+            addpkgs = ask_additional()
+            if len(addpkgs) > 0:
+                args.append("--reinstall-atoms="+" ".join(addpkgs))
+            continue
+        depgraph.display_problems()
+        return
+    args.remove("--pretend")
+    args.append("--ask")
+    subprocess.call(["emerge"] + args)
+
+def ask_additional():
+    txt = input("Any package to reinstall?: ")
+    return txt.split(" ")
+
+def flaggie(pkg):
+    ret = 1
+    while ret:
+        prefill = ">="+pkg.cpv+"::"+pkg.repo+" "
+        readline.set_startup_hook(lambda: readline.insert_text(prefill))
+        try:
+            cmd = input("flaggie: ")
+        finally:
+            readline.set_startup_hook()
+        if cmd == "":
+            return
+        ret = subprocess.call(["flaggie"]+cmd.split(" "))
+
+def anything_autounmask(depgraph):
+    dynamic_config = depgraph._dynamic_config
+    return dynamic_config._needed_unstable_keywords or \
+        dynamic_config._needed_p_mask_changes or \
+        dynamic_config._needed_use_config_changes.items() or \
+        dynamic_config._needed_license_changes.items()
+
+if __name__ == "__main__":
+    main()

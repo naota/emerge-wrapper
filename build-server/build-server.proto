@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package buildserver;
+
+service Build {
+  rpc AllocateGroup(AllocationRequest) returns (AllocationResponse) {};
+  rpc FreeGroup(FreeRequest) returns (FreeResponse) {};
+}
+
+message AllocationRequest {
+  uint32 numProcs = 1;
+}
+message AllocationResponse {
+  uint32 numBuilders = 1;
+  string groupId = 2;
+}
+
+message FreeRequest {
+  string groupId = 1;
+}
+message FreeResponse {
+  bool freed = 1;
+}

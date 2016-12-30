@@ -1,20 +1,19 @@
-//go:generate stringer -type=BuildServerError
-
 package buildserver
 
 import (
-	"fmt"
-	"github.com/msgpack-rpc/msgpack-rpc-go/rpc"
-	"github.com/satori/go.uuid"
+	"log"
 	"net"
-	"reflect"
+
+	"github.com/satori/go.uuid"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 )
 
 type GroupID string
 type BuildGroup struct {
 	id            GroupID
-	maxBuilders   uint
-	usingBuilders uint
+	maxBuilders   uint32
+	usingBuilders uint32
 }
 
 type GroupInfo struct {
@@ -22,68 +21,51 @@ type GroupInfo struct {
 	NumBuilders uint
 }
 
-type builderFuncMap map[string]reflect.Value
-type BuildServer struct {
-	funcMap  builderFuncMap
-	numProcs uint
-	server   *rpc.Server
-	listener net.Listener
-	groups   map[GroupID]BuildGroup
+type buildServer struct {
+	rpcServer *grpc.Server
+	numProcs  uint32
+	groups    map[GroupID]BuildGroup
 }
 
-type BuildServerError int
-
-const (
-	NoSuchGroup BuildServerError = iota
-)
-
-func NewServer(numProcs uint) *BuildServer {
-	b := new(BuildServer)
-	b.funcMap = builderFuncMap{
-		"allocate": reflect.ValueOf(BuildServer.AllocateGroup),
-		"free":     reflect.ValueOf(BuildServer.FreeGroup),
-	}
+func NewServer(numProcs uint32) *buildServer {
+	b := new(buildServer)
 	b.numProcs = numProcs
 	b.groups = map[GroupID]BuildGroup{}
 
 	return b
 }
 
-func (server BuildServer) Run(laddr string) error {
-	var err error
-	server.server = rpc.NewServer(server.funcMap, true, nil)
-	server.listener, err = net.Listen("tcp", laddr)
+// Run is
+func (server *buildServer) Run(laddr string) error {
+	lis, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return err
 	}
-	server.server.Run()
-	return nil
+
+	rpcServer := grpc.NewServer()
+	RegisterBuildServer(rpcServer, server)
+	server.rpcServer = rpcServer
+	return rpcServer.Serve(lis)
 }
 
-func (builder builderFuncMap) Resolve(name string, arguments []reflect.Value) (reflect.Value, error) {
-	return builder[name], nil
+func (server *buildServer) Stop() {
+	server.rpcServer.GracefulStop()
 }
 
-func (server BuildServer) AllocateGroup(cnt uint) (GroupInfo, fmt.Stringer) {
-	n := cnt
-	if cnt > server.numProcs {
+func (server *buildServer) AllocateGroup(ctx context.Context, req *AllocationRequest) (*AllocationResponse, error) {
+	n := req.NumProcs
+	if n > server.numProcs {
 		n = server.numProcs
 	}
 	server.numProcs -= n
 
-	var ids []GroupID
 	g := newGroup(n)
 	server.groups[g.id] = g
-	ids = append(ids, g.id)
 
-	gi := GroupInfo{}
-	gi.ID = g.id
-	gi.NumBuilders = n
-
-	return gi, nil
+	return &AllocationResponse{n, string(g.id)}, nil
 }
 
-func newGroup(n uint) BuildGroup {
+func newGroup(n uint32) BuildGroup {
 	b := BuildGroup{}
 	b.id = GroupID(uuid.NewV4().String())
 	b.maxBuilders = n
@@ -91,11 +73,22 @@ func newGroup(n uint) BuildGroup {
 	return b
 }
 
-func (server BuildServer) FreeGroup(id GroupID) (bool, fmt.Stringer) {
+func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*FreeResponse, error) {
+	id := GroupID(req.GroupId)
 	_, ok := server.groups[id]
 	if !ok {
-		return false, NoSuchGroup
+		return &FreeResponse{false}, nil
 	}
 	delete(server.groups, id)
-	return true, nil
+	return &FreeResponse{true}, nil
+}
+
+func main() {
+	var numProcs uint32
+	numProcs = 4
+	b := NewServer(numProcs)
+	err := b.Run(":50000")
+	if err != nil {
+		log.Fatal(err)
+	}
 }

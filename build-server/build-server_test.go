@@ -10,9 +10,9 @@ import (
 
 func startServer() (*buildServer, BuildClient, *grpc.ClientConn, error) {
 	addr := ":50000"
-	server := NewServer(1)
+	server := newServer(1)
 	go func() {
-		err := server.Run(addr)
+		err := server.run(addr)
 		if err != nil {
 			log.Printf("server: %v", err)
 		}

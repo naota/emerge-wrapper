@@ -27,7 +27,7 @@ type buildServer struct {
 	groups    map[GroupID]BuildGroup
 }
 
-func NewServer(numProcs uint32) *buildServer {
+func newServer(numProcs uint32) *buildServer {
 	b := new(buildServer)
 	b.numProcs = numProcs
 	b.groups = map[GroupID]BuildGroup{}
@@ -35,8 +35,7 @@ func NewServer(numProcs uint32) *buildServer {
 	return b
 }
 
-// Run is
-func (server *buildServer) Run(laddr string) error {
+func (server *buildServer) run(laddr string) error {
 	lis, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return err
@@ -86,8 +85,8 @@ func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*Fr
 func main() {
 	var numProcs uint32
 	numProcs = 4
-	b := NewServer(numProcs)
-	err := b.Run(":50000")
+	b := newServer(numProcs)
+	err := b.run(":50000")
 	if err != nil {
 		log.Fatal(err)
 	}

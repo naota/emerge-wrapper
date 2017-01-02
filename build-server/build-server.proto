@@ -35,6 +35,8 @@ message BaseResponse {
     NoError = 0;
     BadChecksumSize = 1;
     ChecksumNotMatch = 2;
+    BadArchive = 3;
+    OtherError = 4;
   }
 }
 

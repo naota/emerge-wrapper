@@ -2,7 +2,14 @@ package buildserver
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
+	"io/ioutil"
+	"log"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
 
 	"github.com/satori/go.uuid"
 	"golang.org/x/net/context"
@@ -78,8 +85,11 @@ func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*Fr
 }
 
 func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*BaseResponse, error) {
-	data := baseInfo.ArchiveData
 	const size = sha256.Size
+	const tmpDir = "tmp"
+	const baseDir = "base"
+
+	data := baseInfo.ArchiveData
 
 	if len(baseInfo.ArchiveChecksum) != size {
 		return &BaseResponse{false, BaseResponse_BadChecksumSize}, nil
@@ -89,6 +99,40 @@ func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*
 
 	if sha256.Sum256(data) != csum {
 		return &BaseResponse{false, BaseResponse_ChecksumNotMatch}, nil
+	}
+
+	os.MkdirAll(tmpDir, 0700)
+	tmpfile, err := ioutil.TempFile(tmpDir, "archive")
+	if err != nil {
+		log.Print(err)
+		return &BaseResponse{false, BaseResponse_OtherError}, nil
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err = tmpfile.Write(data); err != nil {
+		log.Print(err)
+		return &BaseResponse{false, BaseResponse_OtherError}, nil
+	}
+	if err = tmpfile.Close(); err != nil {
+		log.Print(err)
+		return &BaseResponse{false, BaseResponse_OtherError}, nil
+	}
+
+	dir := filepath.Join(baseDir, hex.EncodeToString(csum[:]))
+	_, err = os.Open(dir)
+	if os.IsNotExist(err) {
+		os.MkdirAll(dir, 0700)
+		err = exec.Command("tar", "-Jxf", tmpfile.Name(), "-C", dir).Run()
+		if err != nil {
+			log.Print(err)
+			return &BaseResponse{false, BaseResponse_BadArchive}, nil
+		}
+	} else {
+		now := time.Now()
+		err = os.Chtimes(dir, now, now)
+		if err != nil {
+			log.Print(err)
+		}
 	}
 
 	return &BaseResponse{true, BaseResponse_NoError}, nil

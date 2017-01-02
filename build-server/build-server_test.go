@@ -2,9 +2,13 @@ package buildserver
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"golang.org/x/net/context"
@@ -90,6 +94,9 @@ func TestFreeNonExisting(t *testing.T) {
 }
 
 func TestSetupBase(t *testing.T) {
+	const baseDir = "base"
+	const testDataDir = "testdata"
+
 	server, client, conn, err := startServer()
 	if err != nil {
 		t.Fatal(err)
@@ -105,8 +112,14 @@ func TestSetupBase(t *testing.T) {
 	gid := sinfo.GroupId
 	defer client.FreeGroup(context.Background(), &FreeRequest{gid})
 
-	baseData := []byte{0, 1, 2, 3}
+	baseData, err := ioutil.ReadFile(filepath.Join(testDataDir, "test.tar.xz"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	checksum := sha256.Sum256(baseData)
+	testRoot := filepath.Join(baseDir, hex.EncodeToString(checksum[:]))
+	os.RemoveAll(testRoot)
+
 	bdata := BaseData{
 		ArchiveData:     baseData,
 		ArchiveChecksum: make([]byte, sha256.Size),
@@ -117,9 +130,24 @@ func TestSetupBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bres.Succeed {
-		t.Fatal("not succed w/ good checksum")
+		t.Fatal("not succed w/ good checksum", bres.Error)
 	}
 
+	_, err = os.Open(filepath.Join(testRoot, "testfile"))
+	if os.IsNotExist(err) {
+		t.Fatal("test root not unpacked:", err)
+	}
+
+	// unpack same dir
+	bres, err = client.SetupBase(context.Background(), &bdata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bres.Succeed {
+		t.Fatal("not succed w/ good checksum", bres.Error)
+	}
+
+	// wrong checksum data
 	bdata.ArchiveChecksum = make([]byte, sha256.Size)
 	bres, err = client.SetupBase(context.Background(), &bdata)
 	if err != nil {
@@ -129,6 +157,7 @@ func TestSetupBase(t *testing.T) {
 		t.Fatal("expected bad checksum error")
 	}
 
+	// wrong checksum size
 	bdata.ArchiveChecksum = make([]byte, 4)
 	bres, err = client.SetupBase(context.Background(), &bdata)
 	if err != nil {

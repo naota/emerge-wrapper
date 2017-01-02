@@ -9,28 +9,23 @@ import (
 	"google.golang.org/grpc"
 )
 
-type GroupID string
-type BuildGroup struct {
-	id            GroupID
+type groupID string
+type buildGroup struct {
+	id            groupID
 	maxBuilders   uint32
 	usingBuilders uint32
-}
-
-type GroupInfo struct {
-	ID          GroupID
-	NumBuilders uint
 }
 
 type buildServer struct {
 	rpcServer *grpc.Server
 	numProcs  uint32
-	groups    map[GroupID]BuildGroup
+	groups    map[groupID]buildGroup
 }
 
 func newServer(numProcs uint32) *buildServer {
 	b := new(buildServer)
 	b.numProcs = numProcs
-	b.groups = map[GroupID]BuildGroup{}
+	b.groups = map[groupID]buildGroup{}
 
 	return b
 }
@@ -64,16 +59,16 @@ func (server *buildServer) AllocateGroup(ctx context.Context, req *AllocationReq
 	return &AllocationResponse{n, string(g.id)}, nil
 }
 
-func newGroup(n uint32) BuildGroup {
-	b := BuildGroup{}
-	b.id = GroupID(uuid.NewV4().String())
+func newGroup(n uint32) buildGroup {
+	b := buildGroup{}
+	b.id = groupID(uuid.NewV4().String())
 	b.maxBuilders = n
 	b.usingBuilders = 0
 	return b
 }
 
 func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*FreeResponse, error) {
-	id := GroupID(req.GroupId)
+	id := groupID(req.GroupId)
 	_, ok := server.groups[id]
 	if !ok {
 		return &FreeResponse{false}, nil

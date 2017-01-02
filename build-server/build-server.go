@@ -1,7 +1,6 @@
 package buildserver
 
 import (
-	"log"
 	"net"
 
 	"github.com/satori/go.uuid"
@@ -75,14 +74,4 @@ func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*Fr
 	}
 	delete(server.groups, id)
 	return &FreeResponse{true}, nil
-}
-
-func main() {
-	var numProcs uint32
-	numProcs = 4
-	b := newServer(numProcs)
-	err := b.run(":50000")
-	if err != nil {
-		log.Fatal(err)
-	}
 }

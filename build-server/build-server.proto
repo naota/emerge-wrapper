@@ -5,6 +5,7 @@ package buildserver;
 service Build {
   rpc AllocateGroup(AllocationRequest) returns (AllocationResponse) {};
   rpc FreeGroup(FreeRequest) returns (FreeResponse) {};
+  rpc SetupBase(BaseData) returns (BaseResponse) {};
 }
 
 message AllocationRequest {
@@ -20,4 +21,24 @@ message FreeRequest {
 }
 message FreeResponse {
   bool freed = 1;
+}
+
+message BaseData {
+  bytes archiveData = 1;
+  bytes archiveChecksum = 2;
+  repeated string packages = 3;
+}
+message BaseResponse {
+  bool succeed = 1;
+  ErrorCode error = 2;
+  enum ErrorCode {
+    NoError = 0;
+    BadChecksumSize = 1;
+    ChecksumNotMatch = 2;
+  }
+}
+
+message Package {
+  string cpv = 1;
+  bytes checksum = 2;
 }

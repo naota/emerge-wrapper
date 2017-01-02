@@ -1,7 +1,10 @@
 package buildserver
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"log"
+	"math/rand"
 	"testing"
 
 	"golang.org/x/net/context"
@@ -9,7 +12,7 @@ import (
 )
 
 func startServer() (*buildServer, BuildClient, *grpc.ClientConn, error) {
-	addr := ":50000"
+	addr := fmt.Sprintf(":%d", 10000+rand.Intn(30000))
 	server := newServer(1)
 	go func() {
 		err := server.run(addr)
@@ -83,5 +86,55 @@ func TestFreeNonExisting(t *testing.T) {
 	}
 	if freed.Freed {
 		t.Fatal("Free non-existent group")
+	}
+}
+
+func TestSetupBase(t *testing.T) {
+	server, client, conn, err := startServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	defer server.Stop()
+
+	sinfo, err := client.AllocateGroup(context.Background(), &AllocationRequest{1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gid := sinfo.GroupId
+	defer client.FreeGroup(context.Background(), &FreeRequest{gid})
+
+	baseData := []byte{0, 1, 2, 3}
+	checksum := sha256.Sum256(baseData)
+	bdata := BaseData{
+		ArchiveData:     baseData,
+		ArchiveChecksum: make([]byte, sha256.Size),
+	}
+	copy(bdata.ArchiveChecksum, checksum[:])
+	bres, err := client.SetupBase(context.Background(), &bdata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bres.Succeed {
+		t.Fatal("not succed w/ good checksum")
+	}
+
+	bdata.ArchiveChecksum = make([]byte, sha256.Size)
+	bres, err = client.SetupBase(context.Background(), &bdata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bres.Error != BaseResponse_ChecksumNotMatch {
+		t.Fatal("expected bad checksum error")
+	}
+
+	bdata.ArchiveChecksum = make([]byte, 4)
+	bres, err = client.SetupBase(context.Background(), &bdata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bres.Error != BaseResponse_BadChecksumSize {
+		t.Fatal("expected checksum size error")
 	}
 }

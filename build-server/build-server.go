@@ -1,6 +1,7 @@
 package buildserver
 
 import (
+	"crypto/sha256"
 	"net"
 
 	"github.com/satori/go.uuid"
@@ -74,4 +75,21 @@ func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*Fr
 	}
 	delete(server.groups, id)
 	return &FreeResponse{true}, nil
+}
+
+func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*BaseResponse, error) {
+	data := baseInfo.ArchiveData
+	const size = sha256.Size
+
+	if len(baseInfo.ArchiveChecksum) != size {
+		return &BaseResponse{false, BaseResponse_BadChecksumSize}, nil
+	}
+	var csum [size]byte
+	copy(csum[:], baseInfo.ArchiveChecksum)
+
+	if sha256.Sum256(data) != csum {
+		return &BaseResponse{false, BaseResponse_ChecksumNotMatch}, nil
+	}
+
+	return &BaseResponse{true, BaseResponse_NoError}, nil
 }

@@ -15,9 +15,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-func startServer() (*buildServer, BuildClient, *grpc.ClientConn, error) {
+const baseDir = "base"
+const testDataDir = "testdata"
+
+func startServer(procs uint32) (*buildServer, BuildClient, *grpc.ClientConn, error) {
 	addr := fmt.Sprintf(":%d", 10000+rand.Intn(30000))
-	server := newServer(1)
+	server := newServer(procs)
 	go func() {
 		err := server.run(addr)
 		if err != nil {
@@ -34,57 +37,96 @@ func startServer() (*buildServer, BuildClient, *grpc.ClientConn, error) {
 	return server, client, conn, nil
 }
 
+type session struct {
+	server *buildServer
+	client BuildClient
+	gid    groupID
+	conn   *grpc.ClientConn
+}
+
+func startSession(maxProcs, groupProcs uint32) (*session, error) {
+	server, client, conn, err := startServer(maxProcs)
+	if err != nil {
+		return nil, err
+	}
+
+	alloced, err := client.AllocateGroup(context.Background(),
+		&AllocationRequest{groupProcs})
+	if err != nil {
+		return nil, err
+	}
+	if alloced.NumBuilders != groupProcs {
+		return nil, fmt.Errorf("#Workers not expected: %d != %d",
+			alloced.NumBuilders, groupProcs)
+	}
+	gid := groupID(alloced.GroupId)
+
+	return &session{server, client, gid, conn}, nil
+}
+
+func closeSession(ses *session) error {
+	if ses.gid != "" {
+		freed, err := ses.client.FreeGroup(context.Background(),
+			&FreeRequest{string(ses.gid)})
+		if err != nil {
+			return err
+		}
+		if !freed.Freed {
+			return fmt.Errorf("failed to free group")
+		}
+	}
+	ses.conn.Close()
+	ses.server.Stop()
+	return nil
+}
+
 func TestAllocateOne(t *testing.T) {
-	server, client, conn, err := startServer()
+	ses, err := startSession(1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	defer server.Stop()
-
-	alloced, err := client.AllocateGroup(context.Background(), &AllocationRequest{1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if alloced.NumBuilders != 1 {
-		t.Fatalf("#Workers not expected: %v", alloced.NumBuilders)
-	}
-
-	freed, err := client.FreeGroup(context.Background(), &FreeRequest{alloced.GroupId})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !freed.Freed {
-		t.Fatal("build slave not freed")
-	}
+	defer func() {
+		err := closeSession(ses)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
 
 func TestOverAllocate(t *testing.T) {
-	server, client, conn, err := startServer()
+	ses, err := startSession(1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	defer server.Stop()
+	defer func() {
+		err = closeSession(ses)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	alloced, err := client.AllocateGroup(context.Background(), &AllocationRequest{2})
+	alloced, err := ses.client.AllocateGroup(context.Background(), &AllocationRequest{1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alloced.NumBuilders != 1 {
-		t.Fatal("over allocation")
+	if alloced.NumBuilders != 0 {
+		t.Fatal("over allocated")
 	}
 }
 
 func TestFreeNonExisting(t *testing.T) {
-	server, client, conn, err := startServer()
+	ses, err := startSession(1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	defer server.Stop()
+	defer func() {
+		err = closeSession(ses)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	freed, err := client.FreeGroup(context.Background(), &FreeRequest{"NONEXIST"})
+	freed, err := ses.client.FreeGroup(context.Background(), &FreeRequest{"NONEXIST"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,23 +136,16 @@ func TestFreeNonExisting(t *testing.T) {
 }
 
 func TestSetupBase(t *testing.T) {
-	const baseDir = "base"
-	const testDataDir = "testdata"
-
-	server, client, conn, err := startServer()
+	ses, err := startSession(1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	defer server.Stop()
-
-	sinfo, err := client.AllocateGroup(context.Background(), &AllocationRequest{1})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gid := sinfo.GroupId
-	defer client.FreeGroup(context.Background(), &FreeRequest{gid})
+	defer func() {
+		err = closeSession(ses)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	baseData, err := ioutil.ReadFile(filepath.Join(testDataDir, "test.tar.xz"))
 	if err != nil {
@@ -122,10 +157,9 @@ func TestSetupBase(t *testing.T) {
 
 	bdata := BaseData{
 		ArchiveData:     baseData,
-		ArchiveChecksum: make([]byte, sha256.Size),
+		ArchiveChecksum: checksum[:],
 	}
-	copy(bdata.ArchiveChecksum, checksum[:])
-	bres, err := client.SetupBase(context.Background(), &bdata)
+	bres, err := ses.client.SetupBase(context.Background(), &bdata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +173,7 @@ func TestSetupBase(t *testing.T) {
 	}
 
 	// unpack same dir
-	bres, err = client.SetupBase(context.Background(), &bdata)
+	bres, err = ses.client.SetupBase(context.Background(), &bdata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +183,7 @@ func TestSetupBase(t *testing.T) {
 
 	// wrong checksum data
 	bdata.ArchiveChecksum = make([]byte, sha256.Size)
-	bres, err = client.SetupBase(context.Background(), &bdata)
+	bres, err = ses.client.SetupBase(context.Background(), &bdata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +193,7 @@ func TestSetupBase(t *testing.T) {
 
 	// wrong checksum size
 	bdata.ArchiveChecksum = make([]byte, 4)
-	bres, err = client.SetupBase(context.Background(), &bdata)
+	bres, err = ses.client.SetupBase(context.Background(), &bdata)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -127,17 +127,17 @@ func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*
 	tmpfile, err := server.tempFile("archive")
 	if err != nil {
 		log.Print(err)
-		return &BaseResponse{false, BaseResponse_OtherError}, nil
+		return &BaseResponse{false, BaseResponse_InternalError}, nil
 	}
 	defer os.Remove(tmpfile.Name())
 
 	if _, err = tmpfile.Write(data); err != nil {
 		log.Print(err)
-		return &BaseResponse{false, BaseResponse_OtherError}, nil
+		return &BaseResponse{false, BaseResponse_InternalError}, nil
 	}
 	if err = tmpfile.Close(); err != nil {
 		log.Print(err)
-		return &BaseResponse{false, BaseResponse_OtherError}, nil
+		return &BaseResponse{false, BaseResponse_InternalError}, nil
 	}
 
 	dir := filepath.Join(server.baseDir, gid)
@@ -204,7 +204,7 @@ func (server *buildServer) CheckPackages(stream Build_CheckPackagesServer) error
 		haspkg, err := server.hasPackageCache(pkg)
 		if err != nil {
 			log.Print(err)
-			sendError(PackageRequest_OtherError)
+			sendError(PackageRequest_InternalError)
 			return nil
 		}
 		if !haspkg {
@@ -301,7 +301,7 @@ func (server *buildServer) DeployPackage(ctx context.Context, info *DeployInfo) 
 
 	tmpfile, err := server.tempFile("pkg")
 	if err != nil {
-		return &DeployResponse{DeployResponse_OtherError}, nil
+		return &DeployResponse{DeployResponse_InternalError}, nil
 	}
 	tmpname := tmpfile.Name()
 	defer os.Remove(tmpname)
@@ -314,12 +314,12 @@ func (server *buildServer) DeployPackage(ctx context.Context, info *DeployInfo) 
 	err = os.Rename(tmpfile.Name(), cacheFile)
 	if err != nil {
 		log.Print(err)
-		return &DeployResponse{DeployResponse_OtherError}, nil
+		return &DeployResponse{DeployResponse_InternalError}, nil
 	}
 
 	err = server.linkPackage(gid, pkg)
 	if err != nil {
-		return &DeployResponse{DeployResponse_OtherError}, nil
+		return &DeployResponse{DeployResponse_InternalError}, nil
 	}
 
 	return &DeployResponse{}, nil

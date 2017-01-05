@@ -39,7 +39,7 @@ message BaseResponse {
     ChecksumNotMatch = 2;
     BadArchive = 3;
     BaseExists = 4;
-    OtherError = 5;
+    InternalError = 5;
   }
 }
 
@@ -57,7 +57,7 @@ message PackageRequest {
     InvalidRequest = 1;
     NoBase = 2;
     NetworkError = 3;
-    OtherError = 4;
+    InternalError = 4;
   }
 }
 
@@ -73,6 +73,6 @@ message DeployResponse {
     InvalidRequest = 1;
     InvalidPackage = 2;
     BadChecksum = 3;
-    OtherError = 4;
+    InternalError = 4;
   }
 }

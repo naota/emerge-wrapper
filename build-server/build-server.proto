@@ -3,30 +3,30 @@ syntax = "proto3";
 package buildserver;
 
 service Build {
-  rpc AllocateGroup(AllocationRequest) returns (AllocationResponse) {};
-  rpc FreeGroup(FreeRequest) returns (FreeResponse) {};
+  rpc StartSession(StartRequest) returns (StartResponse) {};
+  rpc CloseSession(CloseRequest) returns (CloseResponse) {};
   rpc SetupBase(BaseData) returns (BaseResponse) {};
   rpc CheckPackages(stream Package) returns (stream PackageRequest) {};
   rpc DeployPackage(DeployInfo) returns (DeployResponse) {};
 }
 
-message AllocationRequest {
+message StartRequest {
   uint32 numProcs = 1;
 }
-message AllocationResponse {
+message StartResponse {
   uint32 numBuilders = 1;
-  string groupId = 2;
+  string sessionID = 2;
 }
 
-message FreeRequest {
-  string groupId = 1;
+message CloseRequest {
+  string sessionID = 1;
 }
-message FreeResponse {
+message CloseResponse {
   bool freed = 1;
 }
 
 message BaseData {
-  string groupId = 1;
+  string sessionID = 1;
   bytes archiveData = 2;
   bytes archiveChecksum = 3;
 }
@@ -62,7 +62,7 @@ message PackageRequest {
 }
 
 message DeployInfo {
-  string groupId = 1;
+  string sessionID = 1;
   Package pkgInfo = 2;
   bytes data = 3;
 }

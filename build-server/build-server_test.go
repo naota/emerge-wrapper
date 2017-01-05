@@ -44,7 +44,7 @@ func startServer(procs uint32) (*buildServer, BuildClient, *grpc.ClientConn, err
 type session struct {
 	server *buildServer
 	client BuildClient
-	gid    groupID
+	sid    sessionID
 	conn   *grpc.ClientConn
 }
 
@@ -55,8 +55,8 @@ func startSession(maxProcs, groupProcs uint32) (*session, error) {
 		return nil, err
 	}
 
-	alloced, err := client.AllocateGroup(context.Background(),
-		&AllocationRequest{groupProcs})
+	alloced, err := client.StartSession(context.Background(),
+		&StartRequest{groupProcs})
 	if err != nil {
 		return nil, err
 	}
@@ -64,15 +64,15 @@ func startSession(maxProcs, groupProcs uint32) (*session, error) {
 		return nil, fmt.Errorf("#Workers not expected: %d != %d",
 			alloced.NumBuilders, groupProcs)
 	}
-	gid := groupID(alloced.GroupId)
+	sid := sessionID(alloced.SessionID)
 
-	return &session{server, client, gid, conn}, nil
+	return &session{server, client, sid, conn}, nil
 }
 
 func closeSession(ses *session) error {
-	if ses.gid != "" {
-		freed, err := ses.client.FreeGroup(context.Background(),
-			&FreeRequest{string(ses.gid)})
+	if ses.sid != "" {
+		freed, err := ses.client.CloseSession(context.Background(),
+			&CloseRequest{string(ses.sid)})
 		if err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func TestOverAllocate(t *testing.T) {
 		}
 	}()
 
-	alloced, err := ses.client.AllocateGroup(context.Background(), &AllocationRequest{1})
+	alloced, err := ses.client.StartSession(context.Background(), &StartRequest{1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestFreeNonExisting(t *testing.T) {
 		}
 	}()
 
-	freed, err := ses.client.FreeGroup(context.Background(), &FreeRequest{"NONEXIST"})
+	freed, err := ses.client.CloseSession(context.Background(), &CloseRequest{"NONEXIST"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,11 +157,11 @@ func TestSetupBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	checksum := sha256.Sum256(baseData)
-	testRoot := filepath.Join(testDir, baseDir, string(ses.gid))
+	testRoot := filepath.Join(testDir, baseDir, string(ses.sid))
 	os.RemoveAll(testRoot)
 
 	bdata := BaseData{
-		GroupId:         string(ses.gid),
+		SessionID:       string(ses.sid),
 		ArchiveData:     baseData,
 		ArchiveChecksum: checksum[:],
 	}
@@ -229,7 +229,7 @@ func TestCheckPackages(t *testing.T) {
 	os.RemoveAll(testRoot)
 
 	bres, err := ses.client.SetupBase(context.Background(),
-		&BaseData{string(ses.gid), baseData, checksum[:]})
+		&BaseData{string(ses.sid), baseData, checksum[:]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestCheckPackages(t *testing.T) {
 		t.Fatal("not succed w/ good checksum", bres.Error)
 	}
 
-	md := metadata.Pairs("gid", string(ses.gid))
+	md := metadata.Pairs("sid", string(ses.sid))
 	ctx := metadata.NewContext(context.Background(), md)
 	stream, err := ses.client.CheckPackages(ctx)
 	if err != nil {
@@ -264,7 +264,7 @@ func TestCheckPackages(t *testing.T) {
 
 	pkgData := baseData
 	dres, err := ses.client.DeployPackage(context.Background(),
-		&DeployInfo{string(ses.gid), pkg, pkgData})
+		&DeployInfo{string(ses.sid), pkg, pkgData})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +297,8 @@ func TestCheckPackages(t *testing.T) {
 	}
 	stream.CloseSend()
 
-	// with multiple gids
-	md = metadata.Pairs("gid", string(ses.gid), "gid", "dummy")
+	// with multiple sids
+	md = metadata.Pairs("sid", string(ses.sid), "sid", "dummy")
 	ctx = metadata.NewContext(context.Background(), md)
 	stream, err = ses.client.CheckPackages(ctx)
 	if err != nil {
@@ -310,8 +310,8 @@ func TestCheckPackages(t *testing.T) {
 	}
 	stream.CloseSend()
 
-	// with multiple gids
-	md = metadata.Pairs("gid", "dummy")
+	// with multiple sids
+	md = metadata.Pairs("sid", "dummy")
 	ctx = metadata.NewContext(context.Background(), md)
 	stream, err = ses.client.CheckPackages(ctx)
 	if err != nil {

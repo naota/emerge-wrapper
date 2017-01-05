@@ -20,9 +20,9 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-type groupID string
-type buildGroup struct {
-	id            groupID
+type sessionID string
+type buildSession struct {
+	id            sessionID
 	maxBuilders   uint32
 	usingBuilders uint32
 }
@@ -30,7 +30,7 @@ type buildGroup struct {
 type buildServer struct {
 	rpcServer *grpc.Server
 	numProcs  uint32
-	groups    map[groupID]buildGroup
+	sessions  map[sessionID]buildSession
 	workdir   string
 	baseDir   string
 	binPkgDir string
@@ -42,7 +42,7 @@ func newServer(numProcs uint32, workdir string) *buildServer {
 	b := buildServer{
 		rpcServer: nil,
 		numProcs:  numProcs,
-		groups:    map[groupID]buildGroup{},
+		sessions:  map[sessionID]buildSession{},
 		workdir:   workdir,
 		baseDir:   filepath.Join(workdir, "base"),
 		binPkgDir: filepath.Join(workdir, "binpkgs"),
@@ -77,7 +77,7 @@ func (server *buildServer) Stop() {
 	server.rpcServer.GracefulStop()
 }
 
-func (server *buildServer) AllocateGroup(ctx context.Context, req *AllocationRequest) (*AllocationResponse, error) {
+func (server *buildServer) StartSession(ctx context.Context, req *StartRequest) (*StartResponse, error) {
 	n := req.NumProcs
 	if n > server.numProcs {
 		n = server.numProcs
@@ -85,33 +85,33 @@ func (server *buildServer) AllocateGroup(ctx context.Context, req *AllocationReq
 	server.numProcs -= n
 
 	g := newGroup(n)
-	server.groups[g.id] = g
+	server.sessions[g.id] = g
 
-	return &AllocationResponse{n, string(g.id)}, nil
+	return &StartResponse{n, string(g.id)}, nil
 }
 
-func newGroup(n uint32) buildGroup {
-	b := buildGroup{}
-	b.id = groupID(uuid.NewV4().String())
+func newGroup(n uint32) buildSession {
+	b := buildSession{}
+	b.id = sessionID(uuid.NewV4().String())
 	b.maxBuilders = n
 	b.usingBuilders = 0
 	return b
 }
 
-func (server *buildServer) FreeGroup(ctx context.Context, req *FreeRequest) (*FreeResponse, error) {
-	id := groupID(req.GroupId)
-	_, ok := server.groups[id]
+func (server *buildServer) CloseSession(ctx context.Context, req *CloseRequest) (*CloseResponse, error) {
+	id := sessionID(req.SessionID)
+	_, ok := server.sessions[id]
 	if !ok {
-		return &FreeResponse{false}, nil
+		return &CloseResponse{false}, nil
 	}
-	delete(server.groups, id)
-	return &FreeResponse{true}, nil
+	delete(server.sessions, id)
+	return &CloseResponse{true}, nil
 }
 
 func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*BaseResponse, error) {
 	const size = sha256.Size
 
-	gid := string(baseInfo.GroupId)
+	sid := string(baseInfo.SessionID)
 	data := baseInfo.ArchiveData
 
 	if len(baseInfo.ArchiveChecksum) != size {
@@ -140,7 +140,7 @@ func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*
 		return &BaseResponse{false, BaseResponse_InternalError}, nil
 	}
 
-	dir := filepath.Join(server.baseDir, gid)
+	dir := filepath.Join(server.baseDir, sid)
 	_, err = os.Stat(dir)
 	if err == nil {
 		return &BaseResponse{false, BaseResponse_BaseExists}, nil
@@ -156,19 +156,19 @@ func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*
 	return &BaseResponse{true, BaseResponse_NoError}, nil
 }
 
-func getGroupFromContext(ctx context.Context) (groupID, bool) {
+func getGroupFromContext(ctx context.Context) (sessionID, bool) {
 	md, ok := metadata.FromContext(ctx)
 	if !ok {
 		return "", false
 	}
-	gids, ok := md["gid"]
+	sids, ok := md["sid"]
 	if !ok {
 		return "", false
 	}
-	if len(gids) != 1 {
+	if len(sids) != 1 {
 		return "", false
 	}
-	return groupID(gids[0]), true
+	return sessionID(sids[0]), true
 }
 
 func (server *buildServer) CheckPackages(stream Build_CheckPackagesServer) error {
@@ -179,13 +179,13 @@ func (server *buildServer) CheckPackages(stream Build_CheckPackagesServer) error
 		stream.Send(&PackageRequest{&PackageRequest_Pkg{pkg}})
 	}
 
-	gid, ok := getGroupFromContext(stream.Context())
+	sid, ok := getGroupFromContext(stream.Context())
 	if !ok {
 		sendError(PackageRequest_InvalidRequest)
 		return nil
 	}
 
-	_, ok = server.groups[gid]
+	_, ok = server.sessions[sid]
 	if !ok {
 		sendError(PackageRequest_NoBase)
 		return nil
@@ -210,14 +210,14 @@ func (server *buildServer) CheckPackages(stream Build_CheckPackagesServer) error
 		if !haspkg {
 			request(pkg)
 		} else {
-			server.linkPackage(gid, pkg)
+			server.linkPackage(sid, pkg)
 		}
 	}
 
 	return nil
 }
 
-func (server *buildServer) linkPackage(gid groupID, pkg *Package) error {
+func (server *buildServer) linkPackage(sid sessionID, pkg *Package) error {
 	cacheName, err := cacheFileName(pkg)
 	if err != nil {
 		return err
@@ -228,7 +228,7 @@ func (server *buildServer) linkPackage(gid groupID, pkg *Package) error {
 	}
 
 	cachefile := filepath.Join(server.cacheDir, cacheName)
-	pkgfile := filepath.Join(server.binPkgDir, string(gid), pkgName)
+	pkgfile := filepath.Join(server.binPkgDir, string(sid), pkgName)
 	os.MkdirAll(filepath.Dir(pkgfile), 0700)
 	return os.Symlink(cachefile, pkgfile)
 }
@@ -289,7 +289,7 @@ func verifyPackageFile(pkg *Package, tmpfile *os.File) bool {
 }
 
 func (server *buildServer) DeployPackage(ctx context.Context, info *DeployInfo) (*DeployResponse, error) {
-	gid := groupID(info.GroupId)
+	sid := sessionID(info.SessionID)
 	pkg := info.PkgInfo
 	data := info.Data
 
@@ -317,7 +317,7 @@ func (server *buildServer) DeployPackage(ctx context.Context, info *DeployInfo) 
 		return &DeployResponse{DeployResponse_InternalError}, nil
 	}
 
-	err = server.linkPackage(gid, pkg)
+	err = server.linkPackage(sid, pkg)
 	if err != nil {
 		return &DeployResponse{DeployResponse_InternalError}, nil
 	}

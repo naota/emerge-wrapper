@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -13,14 +14,17 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
+const testDir = "testdir"
 const baseDir = "base"
 const testDataDir = "testdata"
+const baseFileName = "base.tar.xz"
 
 func startServer(procs uint32) (*buildServer, BuildClient, *grpc.ClientConn, error) {
 	addr := fmt.Sprintf(":%d", 10000+rand.Intn(30000))
-	server := newServer(procs)
+	server := newServer(procs, testDir)
 	go func() {
 		err := server.run(addr)
 		if err != nil {
@@ -45,6 +49,7 @@ type session struct {
 }
 
 func startSession(maxProcs, groupProcs uint32) (*session, error) {
+	os.RemoveAll(testDir)
 	server, client, conn, err := startServer(maxProcs)
 	if err != nil {
 		return nil, err
@@ -147,15 +152,16 @@ func TestSetupBase(t *testing.T) {
 		}
 	}()
 
-	baseData, err := ioutil.ReadFile(filepath.Join(testDataDir, "test.tar.xz"))
+	baseData, err := ioutil.ReadFile(filepath.Join(testDataDir, baseFileName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	checksum := sha256.Sum256(baseData)
-	testRoot := filepath.Join(baseDir, hex.EncodeToString(checksum[:]))
+	testRoot := filepath.Join(testDir, baseDir, string(ses.gid))
 	os.RemoveAll(testRoot)
 
 	bdata := BaseData{
+		GroupId:         string(ses.gid),
 		ArchiveData:     baseData,
 		ArchiveChecksum: checksum[:],
 	}
@@ -167,7 +173,7 @@ func TestSetupBase(t *testing.T) {
 		t.Fatal("not succed w/ good checksum", bres.Error)
 	}
 
-	_, err = os.Open(filepath.Join(testRoot, "testfile"))
+	_, err = os.Stat(filepath.Join(testRoot, "testfile"))
 	if os.IsNotExist(err) {
 		t.Fatal("test root not unpacked:", err)
 	}
@@ -200,4 +206,120 @@ func TestSetupBase(t *testing.T) {
 	if bres.Error != BaseResponse_BadChecksumSize {
 		t.Fatal("expected checksum size error")
 	}
+}
+
+func TestCheckPackages(t *testing.T) {
+	ses, err := startSession(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = closeSession(ses)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	baseData, err := ioutil.ReadFile(filepath.Join(testDataDir, baseFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checksum := sha256.Sum256(baseData)
+	testRoot := filepath.Join(testDir, baseDir, hex.EncodeToString(checksum[:]))
+	os.RemoveAll(testRoot)
+
+	bres, err := ses.client.SetupBase(context.Background(),
+		&BaseData{string(ses.gid), baseData, checksum[:]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bres.Succeed {
+		t.Fatal("not succed w/ good checksum", bres.Error)
+	}
+
+	md := metadata.Pairs("gid", string(ses.gid))
+	ctx := metadata.NewContext(context.Background(), md)
+	stream, err := ses.client.CheckPackages(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dummycpv := "test-xxx/dummy-0"
+	//invalidcpv := "invalid"
+	err = stream.Send(&Package{dummycpv, checksum[:]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgreq, err := stream.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := pkgreq.GetPkg()
+	if pkg == nil {
+		t.Fatal("expected package request:", pkgreq.GetError())
+	}
+	if pkg.Cpv != dummycpv {
+		t.Fatal("expected dummy package request, got", pkg.Cpv)
+	}
+
+	pkgData := baseData
+	dres, err := ses.client.DeployPackage(context.Background(),
+		&DeployInfo{string(ses.gid), pkg, pkgData})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dres.Error != DeployResponse_NoError {
+		t.Fatal(dres.Error)
+	}
+
+	// send the same package request
+	err = stream.Send(&Package{dummycpv, checksum[:]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = stream.CloseSend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgreq, err = stream.Recv()
+	if err != io.EOF {
+		t.Fatal("expected EOF:", pkgreq, err)
+	}
+
+	// without valid context
+	stream, err = ses.client.CheckPackages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgreq, err = stream.Recv()
+	if pkgreq.GetError() != PackageRequest_InvalidRequest {
+		t.Fatal("expexted invalid error")
+	}
+	stream.CloseSend()
+
+	// with multiple gids
+	md = metadata.Pairs("gid", string(ses.gid), "gid", "dummy")
+	ctx = metadata.NewContext(context.Background(), md)
+	stream, err = ses.client.CheckPackages(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgreq, err = stream.Recv()
+	if pkgreq.GetError() != PackageRequest_InvalidRequest {
+		t.Fatal("expexted invalid error")
+	}
+	stream.CloseSend()
+
+	// with multiple gids
+	md = metadata.Pairs("gid", "dummy")
+	ctx = metadata.NewContext(context.Background(), md)
+	stream, err = ses.client.CheckPackages(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgreq, err = stream.Recv()
+	if pkgreq.GetError() != PackageRequest_NoBase {
+		t.Fatal("expexted no base error")
+	}
+	stream.CloseSend()
 }

@@ -6,6 +6,8 @@ service Build {
   rpc AllocateGroup(AllocationRequest) returns (AllocationResponse) {};
   rpc FreeGroup(FreeRequest) returns (FreeResponse) {};
   rpc SetupBase(BaseData) returns (BaseResponse) {};
+  rpc CheckPackages(stream Package) returns (stream PackageRequest) {};
+  rpc DeployPackage(DeployInfo) returns (DeployResponse) {};
 }
 
 message AllocationRequest {
@@ -24,9 +26,9 @@ message FreeResponse {
 }
 
 message BaseData {
-  bytes archiveData = 1;
-  bytes archiveChecksum = 2;
-  repeated string packages = 3;
+  string groupId = 1;
+  bytes archiveData = 2;
+  bytes archiveChecksum = 3;
 }
 message BaseResponse {
   bool succeed = 1;
@@ -36,11 +38,41 @@ message BaseResponse {
     BadChecksumSize = 1;
     ChecksumNotMatch = 2;
     BadArchive = 3;
-    OtherError = 4;
+    BaseExists = 4;
+    OtherError = 5;
   }
 }
 
 message Package {
   string cpv = 1;
   bytes checksum = 2;
+}
+message PackageRequest {
+  oneof oneof_preq {
+    Package pkg = 1;
+    ErrorCode error = 2;
+  }
+  enum ErrorCode {
+    NoError = 0; // First item enum item must be 0
+    InvalidRequest = 1;
+    NoBase = 2;
+    NetworkError = 3;
+    OtherError = 4;
+  }
+}
+
+message DeployInfo {
+  string groupId = 1;
+  Package pkgInfo = 2;
+  bytes data = 3;
+}
+message DeployResponse {
+  ErrorCode error = 1;
+  enum ErrorCode {
+    NoError = 0;
+    InvalidRequest = 1;
+    InvalidPackage = 2;
+    BadChecksum = 3;
+    OtherError = 4;
+  }
 }

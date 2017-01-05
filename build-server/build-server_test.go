@@ -183,8 +183,8 @@ func TestSetupBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bres.Succeed {
-		t.Fatal("not succed w/ good checksum", bres.Error)
+	if bres.Error != BaseResponse_BaseExists {
+		t.Fatal("expected existing base error, got", bres.Error)
 	}
 
 	// wrong checksum data

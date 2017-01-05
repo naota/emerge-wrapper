@@ -142,7 +142,7 @@ func (server *buildServer) SetupBase(ctx context.Context, baseInfo *BaseData) (*
 
 	dir := filepath.Join(server.baseDir, gid)
 	_, err = os.Stat(dir)
-	if os.IsExist(err) {
+	if err == nil {
 		return &BaseResponse{false, BaseResponse_BaseExists}, nil
 	}
 

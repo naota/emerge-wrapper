@@ -31,14 +31,19 @@ def autoresolve(args):
         print()
         if success:
             break
-        newopts = []
+        newpkgs = []
         depgraph.display_problems()
-        newopts += fix_conflict(depgraph)
+        newpkgs += fix_conflict(depgraph)
         added = False
-        for opt in newopts:
-            if opt not in args:
+        reinstalls = opts.get("--reinstall-atoms", [])
+        oneshot = opts.get("--oneshot", False)
+        for pkg in newpkgs:
+            if pkg not in files and pkg not in reinstalls:
                 # print("Adding %s" % opt)
-                args.append(opt)
+                if oneshot:
+                    args.append(pkg)
+                else:
+                    args.append("--reinstall-atoms="+pkg)
                 added = True
         if not added:
             return False, depgraph, args
@@ -72,7 +77,7 @@ def fix_conflict(depgraph):
         for pargs, kwargs in dynamic_config._unsatisfied_deps_for_display:
             if "myparent" in kwargs and kwargs["myparent"].operation == "nomerge":
                 ppkg = kwargs["myparent"]
-                res.append("--reinstall-atoms="+ppkg.cp)
+                res.append(ppkg.cp)
         return res
 
     _pkg_use_enabled = depgraph._pkg_use_enabled
@@ -105,6 +110,6 @@ def fix_conflict(depgraph):
                         print("reinstall %s for %s" % (ppkg, pkg))
                         newpkg.add(ppkg)
     if newpkg:
-        # return [p.cp for p in newpkg]
-        return ["--reinstall-atoms=" + " ".join([pkg.cp for pkg in newpkg])]
+        return [p.cp for p in newpkg]
+        # return ["--reinstall-atoms=" + " ".join([pkg.cp for pkg in newpkg])]
     return []

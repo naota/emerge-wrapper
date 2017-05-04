@@ -54,27 +54,37 @@ def fix_conflict(depgraph):
     # non-supported problems
     have_slot_conflict = any(depgraph._dynamic_config._package_tracker.slot_conflicts())
     if not have_slot_conflict:
+        print("skip: no slot conflict")
         return []
     dynamic_config = depgraph._dynamic_config
     if dynamic_config._missing_args:
+        print("skip: missing args")
         return []
     if dynamic_config._pprovided_args:
+        print("skip: pprovided args")
         return []
     if dynamic_config._masked_license_updates:
+        print("skip: masked license")
         return []
     if dynamic_config._masked_installed:
+        print("skip: masked installed")
         return []
-    if dynamic_config._needed_unstable_keywords:
-        return []
+    #if dynamic_config._needed_unstable_keywords:
+    #    print("skip: needed unstable: %s" % dynamic_config._needed_unstable_keywords)
+    #    return []
     if dynamic_config._needed_p_mask_changes:
+        print("skip: needed package mask")
         return []
     if dynamic_config._needed_use_config_changes.items():
+        print("skip: needed use config changes")
         return []
     if dynamic_config._needed_license_changes.items():
+        print("skip: needed license change")
         return []
     if dynamic_config._unsatisfied_deps_for_display:
         res = []
         for pargs, kwargs in dynamic_config._unsatisfied_deps_for_display:
+            print("%s %s" % (pargs, kwargs))
             if "myparent" in kwargs and kwargs["myparent"].operation == "nomerge":
                 ppkg = kwargs["myparent"]
                 res.append(ppkg.cp)
@@ -84,6 +94,7 @@ def fix_conflict(depgraph):
     depgraph._slot_conflict_handler = slot_conflict_handler(depgraph)
     handler = depgraph._slot_conflict_handler
     newpkg = set()
+    print(handler.all_conflicts)
     for _, _, pkgs in handler.all_conflicts:
         for pkg in pkgs[1:]:
             parents = handler.all_parents.get(pkg)

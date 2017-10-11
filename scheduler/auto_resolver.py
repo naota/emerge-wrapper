@@ -1,3 +1,5 @@
+from itertools import chain
+
 from _emerge.Package import Package
 from _emerge.actions import load_emerge_config
 from _emerge.create_depgraph_params import create_depgraph_params
@@ -52,13 +54,19 @@ def autoresolve(args):
     return True, depgraph, args
 
 
+def have_conflict(dynamic_config):
+    return (dynamic_config._unsatisfied_blockers_for_display and
+            any(dynamic_config._unsatisfied_blockers_for_display)) or \
+        any(dynamic_config._package_tracker.slot_conflicts())
+
+
 def fix_conflict(depgraph):
     # non-supported problems
-    have_slot_conflict = any(depgraph._dynamic_config._package_tracker.slot_conflicts())
-    if not have_slot_conflict:
-        print("skip: no slot conflict")
-        return []
     dynamic_config = depgraph._dynamic_config
+    if not have_conflict(dynamic_config):
+        print("skip: no conflict")
+        return []
+
     if dynamic_config._missing_args:
         print("skip: missing args")
         return []
@@ -91,6 +99,24 @@ def fix_conflict(depgraph):
                 ppkg = kwargs["myparent"]
                 res.append(ppkg.cp)
         return res
+
+    if dynamic_config._unsatisfied_blockers_for_display is not None:
+        newpkg = set()
+        blockers = dynamic_config._unsatisfied_blockers_for_display
+        for blocker in blockers:
+            for pkg in chain(dynamic_config._blocked_pkgs.child_nodes(blocker),
+                             dynamic_config._blocker_parents.parent_nodes(blocker)):
+                parent_atoms = dynamic_config._parent_atoms.get(pkg)
+                if not parent_atoms:
+                    continue
+                for parent, atom in parent_atoms:
+                    if not isinstance(parent, Package):
+                        continue
+                    if parent.operation != "merge":
+                        print("reinstall %s for %s" % (parent, atom))
+                        newpkg.add(parent)
+        if newpkg:
+            return [p.cp for p in newpkg]
 
     _pkg_use_enabled = depgraph._pkg_use_enabled
     depgraph._slot_conflict_handler = slot_conflict_handler(depgraph)

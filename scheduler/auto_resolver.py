@@ -7,6 +7,7 @@ from _emerge.resolver.slot_collision import slot_conflict_handler
 from _emerge.stdout_spinner import stdout_spinner
 from portage._sets.base import InternalPackageSet
 
+
 def calcdep(config):
     settings = config.target_config.settings
     trees = config.trees
@@ -18,6 +19,7 @@ def calcdep(config):
     # spinner.update = spinner.update_quiet
     return _backtrack_depgraph(settings, trees, opts, params, action, files,
                                spinner)
+
 
 def autoresolve(args):
     success, depgraph = False, None
@@ -43,7 +45,7 @@ def autoresolve(args):
                 if oneshot:
                     args.append(pkg)
                 else:
-                    args.append("--reinstall-atoms="+pkg)
+                    args.append("--reinstall-atoms=" + pkg)
                 added = True
         if not added:
             return False, depgraph, args
@@ -69,7 +71,7 @@ def fix_conflict(depgraph):
     if dynamic_config._masked_installed:
         print("skip: masked installed")
         return []
-    #if dynamic_config._needed_unstable_keywords:
+    # if dynamic_config._needed_unstable_keywords:
     #    print("skip: needed unstable: %s" % dynamic_config._needed_unstable_keywords)
     #    return []
     if dynamic_config._needed_p_mask_changes:
